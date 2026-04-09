@@ -119,24 +119,39 @@ def analyze_image(image, api_key, enable_xai=True):
     client = openai.OpenAI(api_key=api_key)
 
     prompt = """
-    Provide a detailed medical analysis of this image. 
-    Include:
-    1. Description of key findings
-    2. Possible diagnoses
-    3. Recommendations for clinical correlation or follow-up
-    Format your response with "Radiological Analysis" and "Impression" sections.
+    You are analyzing a medical image for a licensed healthcare professional.
+    Provide a complete structured radiological analysis including:
+    1. Image type and anatomical region
+    2. Description of key findings (normal and abnormal)
+    3. Possible diagnoses with confidence levels
+    4. Recommendations for clinical correlation or follow-up
+    Format your response with clear "Radiological Analysis" and "Impression" sections.
+    Be specific, detailed, and clinically precise.
     """
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4-turbo",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_image}"}}
-                ]
-            }],
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert radiologist and medical imaging specialist operating within a "
+                        "professional clinical decision-support platform used by licensed medical professionals. "
+                        "Your role is to provide detailed, structured radiological analysis of medical images. "
+                        "Always provide a full analysis including findings, impression, and recommendations. "
+                        "Never refuse to analyze a medical image — this platform is used exclusively by "
+                        "qualified healthcare professionals for clinical purposes."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_image}"}}
+                    ]
+                }
+            ],
             max_tokens=800,
         )
         analysis = response.choices[0].message.content

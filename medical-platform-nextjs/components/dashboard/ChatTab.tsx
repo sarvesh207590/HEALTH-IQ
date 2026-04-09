@@ -1,216 +1,373 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 
+type Stage = 'initial' | 'specialists' | 'summary' | 'complete';
+
+interface Room {
+    id: string;
+    description: string;
+    creator: string;
+    created_at: string;
+    participants: number;
+    consultation_stage: Stage;
+    specialist_opinions?: string[];
+}
+
+interface Msg {
+    id: string;
+    user: string;
+    content: string;
+    type: string;
+    timestamp: string;
+}
+
+// Matches Streamlit st.chat_message avatar logic
+function avatar(msg: Msg) {
+    if (msg.type === 'system') return '🏥';
+    if (msg.user.includes('Dr. David') || msg.user.includes('Dr. Michael')) return '👨‍⚕️';
+    if (msg.user.startsWith('Dr.')) return '👩‍⚕️';
+    return '👤';
+}
+
 export default function ChatTab() {
-  const { data: session } = useSession();
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomDescription, setNewRoomDescription] = useState('');
-  const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [loading, setLoading] = useState(false);
+    const { data: session } = useSession();
+    const [rooms, setRooms] = useState<Room[]>([]);
+    const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+    const [messages, setMessages] = useState<Msg[]>([]);
+    const [input, setInput] = useState('');
+    const [annotation, setAnnotation] = useState('');
+    const [showAnnotation, setShowAnnotation] = useState(false);
+    const [caseDesc, setCaseDesc] = useState('');
+    const [activeTab, setActiveTab] = useState<'join' | 'create'>('join');
+    const [consultLoading, setConsultLoading] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [statusMsg, setStatusMsg] = useState('');
+    const [progress, setProgress] = useState(0);
+    const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchRooms();
-  }, []);
+    useEffect(() => { loadRooms(); }, []);
 
-  useEffect(() => {
-    if (selectedRoom) {
-      fetchMessages();
-      const interval = setInterval(fetchMessages, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [selectedRoom]);
+    useEffect(() => {
+        if (!currentRoom) return;
+        loadMessages();
+        const t = setInterval(loadMessages, 3000);
+        return () => clearInterval(t);
+    }, [currentRoom?.id]);
 
-  const fetchRooms = async () => {
-    try {
-      const response = await fetch('/api/chat/rooms');
-      const data = await response.json();
-      if (data.success) {
-        setRooms(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching rooms:', error);
-    }
-  };
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
 
-  const fetchMessages = async () => {
-    if (!selectedRoom) return;
-    try {
-      const response = await fetch(`/api/chat/${selectedRoom}/messages`);
-      const data = await response.json();
-      if (data.success) {
-        setMessages(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    }
-  };
+    const loadRooms = async () => {
+        const res = await fetch('/api/chat/rooms');
+        const d = await res.json();
+        if (d.success) setRooms(d.data);
+    };
 
-  const handleCreateRoom = async () => {
-    if (!newRoomName || !newRoomDescription) return;
-    setLoading(true);
-    try {
-      const response = await fetch('/api/chat/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roomName: newRoomName,
-          caseDescription: newRoomDescription,
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setNewRoomName('');
-        setNewRoomDescription('');
-        setShowCreateRoom(false);
-        fetchRooms();
-        setSelectedRoom(data.data.roomId);
-      }
-    } catch (error) {
-      console.error('Error creating room:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const loadMessages = async () => {
+        if (!currentRoom) return;
+        const res = await fetch(`/api/chat/${currentRoom.id}/messages`);
+        const d = await res.json();
+        if (d.success) setMessages(d.data);
+    };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedRoom) return;
-    try {
-      const response = await fetch(`/api/chat/${selectedRoom}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: newMessage }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setNewMessage('');
-        fetchMessages();
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-    }
-  };
+    const reloadRoom = async () => {
+        const res = await fetch('/api/chat/rooms');
+        const d = await res.json();
+        if (d.success) {
+            setRooms(d.data);
+            if (currentRoom) {
+                const updated = d.data.find((r: Room) => r.id === currentRoom.id);
+                if (updated) setCurrentRoom(updated);
+            }
+        }
+    };
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
-      {/* Rooms List */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 overflow-y-auto">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold text-gray-900">Chat Rooms</h3>
-          <button
-            onClick={() => setShowCreateRoom(!showCreateRoom)}
-            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700"
-          >
-            + New
-          </button>
-        </div>
+    const joinRoom = async (room: Room) => {
+        setCurrentRoom(room);
+    };
 
-        {showCreateRoom && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
-            <input
-              type="text"
-              placeholder="Room name"
-              value={newRoomName}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            />
-            <input
-              type="text"
-              placeholder="Case description"
-              value={newRoomDescription}
-              onChange={(e) => setNewRoomDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            />
-            <button
-              onClick={handleCreateRoom}
-              disabled={loading}
-              className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:opacity-50"
-            >
-              Create Room
-            </button>
-          </div>
-        )}
+    const createRoom = async () => {
+        if (!caseDesc.trim()) return;
+        setCreating(true);
+        const res = await fetch('/api/chat/rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: caseDesc }),
+        });
+        const d = await res.json();
+        if (d.success) {
+            setCaseDesc('');
+            await loadRooms();
+            const res2 = await fetch('/api/chat/rooms');
+            const d2 = await res2.json();
+            if (d2.success) {
+                const newRoom = d2.data.find((r: Room) => r.id === d.data.roomId);
+                if (newRoom) setCurrentRoom(newRoom);
+            }
+        }
+        setCreating(false);
+    };
 
-        <div className="space-y-2">
-          {rooms.map((room) => (
-            <button
-              key={room.id}
-              onClick={() => setSelectedRoom(room.id)}
-              className={`w-full text-left p-3 rounded-lg transition ${
-                selectedRoom === room.id
-                  ? 'bg-purple-100 border-2 border-purple-600'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <div className="font-semibold text-sm text-gray-900">{room.name}</div>
-              <div className="text-xs text-gray-500 mt-1">by {room.creator}</div>
-            </button>
-          ))}
-          {rooms.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">No rooms yet</p>
-          )}
-        </div>
-      </div>
+    const sendMessage = async () => {
+        if (!input.trim() || !currentRoom) return;
+        const msg = input;
+        setInput('');
+        await fetch(`/api/chat/${currentRoom.id}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg }),
+        });
+        await loadMessages();
+    };
 
-      {/* Chat Area */}
-      <div className="lg:col-span-2 bg-white border border-gray-200 rounded-lg flex flex-col">
-        {selectedRoom ? (
-          <>
-            <div className="p-4 border-b border-gray-200">
-              <h3 className="font-semibold text-gray-900">
-                {rooms.find((r) => r.id === selectedRoom)?.name || 'Chat Room'}
-              </h3>
-            </div>
+    const submitAnnotation = async () => {
+        if (!annotation.trim() || !currentRoom) return;
+        await fetch(`/api/chat/${currentRoom.id}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: annotation, type: 'annotation' }),
+        });
+        setAnnotation('');
+        setShowAnnotation(false);
+        await loadMessages();
+    };
 
-            <div className="flex-1 p-4 overflow-y-auto space-y-3">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`p-3 rounded-lg ${
-                    msg.user === session?.user?.name
-                      ? 'bg-purple-100 ml-auto max-w-[80%]'
-                      : 'bg-gray-100 mr-auto max-w-[80%]'
-                  }`}
-                >
-                  <div className="text-xs font-semibold text-gray-700 mb-1">{msg.user}</div>
-                  <div className="text-sm text-gray-900">{msg.content}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(msg.createdAt).toLocaleTimeString()}
-                  </div>
+    const runConsultation = async (action: 'start' | 'next' | 'summary' | 'auto') => {
+        if (!currentRoom) return;
+        setConsultLoading(true);
+        setProgress(0);
+        setStatusMsg(action === 'auto' ? '🔬 Analyzing imaging details...' : '⏳ Processing...');
+
+        const endpoint = action === 'auto' ? '/api/consultation/auto' : '/api/consultation';
+        await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ caseId: currentRoom.id, action }),
+        });
+
+        setStatusMsg(action === 'auto' ? '✅ Complete consultation finished!' : '');
+        setProgress(action === 'auto' ? 100 : 0);
+        await loadMessages();
+        await reloadRoom();
+        setConsultLoading(false);
+        setTimeout(() => { setStatusMsg(''); setProgress(0); }, 2000);
+    };
+
+    const stage = currentRoom?.consultation_stage || 'initial';
+    const opinions = currentRoom?.specialist_opinions || [];
+
+    const stageInfo: Record<Stage, string> = {
+        initial: '🔵 **Stage 1:** Present your case and questions',
+        specialists: `🟡 **Stage 2:** Specialist consultation (${opinions.length}/3 opinions received)`,
+        summary: '🟢 **Stage 3:** Multidisciplinary summary ready',
+        complete: '✅ **Complete:** Consultation finished',
+    };
+
+    const roomOptions = rooms.map(r => ({
+        label: `${r.id} - ${r.description} (by ${r.creator})`,
+        room: r,
+    }));
+
+    return (
+        <div className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-900">👨‍⚕️👩‍⚕️ Multi-Doctor Collaboration</h2>
+
+            {/* Tabs: Join Existing / Create New — matches Streamlit st.tabs */}
+            {!currentRoom && (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="flex border-b border-gray-200">
+                        {(['join', 'create'] as const).map(t => (
+                            <button key={t} onClick={() => setActiveTab(t)}
+                                className={`flex-1 py-3 text-sm font-medium transition ${activeTab === t ? 'border-b-2 border-purple-600 text-purple-600 bg-purple-50' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                {t === 'join' ? 'Join Existing Case' : 'Create New Case'}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="p-5">
+                        {activeTab === 'join' && (
+                            rooms.length > 0 ? (
+                                <div className="space-y-3">
+                                    <label className="text-sm font-medium text-gray-700">Select Case</label>
+                                    <select
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                        onChange={e => {
+                                            const room = rooms.find(r => r.id === e.target.value);
+                                            if (room) setCurrentRoom(room);
+                                        }}
+                                        defaultValue=""
+                                    >
+                                        <option value="" disabled>-- Select a case --</option>
+                                        {roomOptions.map(o => (
+                                            <option key={o.room.id} value={o.room.id}>{o.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-blue-800 text-sm">
+                                    No active case discussions. Create a new one!
+                                </div>
+                            )
+                        )}
+
+                        {activeTab === 'create' && (
+                            <div className="space-y-3">
+                                <label className="text-sm font-medium text-gray-700">Case Description</label>
+                                <input
+                                    type="text"
+                                    value={caseDesc}
+                                    onChange={e => setCaseDesc(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && createRoom()}
+                                    placeholder="Describe the case..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                />
+                                <button
+                                    onClick={createRoom}
+                                    disabled={creating || !caseDesc.trim()}
+                                    className="w-full py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50"
+                                >{creating ? 'Creating...' : 'Create Discussion'}</button>
+                            </div>
+                        )}
+                    </div>
                 </div>
-              ))}
-            </div>
+            )}
 
-            <div className="p-4 border-t border-gray-200">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder="Type your message..."
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                >
-                  Send
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            Select a room to start chatting
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            {/* Active chat room — matches Streamlit active chat section */}
+            {currentRoom && (
+                <div className="space-y-4">
+                    {/* Room header */}
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900">Case Discussion: {currentRoom.description}</h3>
+                            <p className="text-sm text-gray-500">Created by {currentRoom.creator} • {currentRoom.participants} participants</p>
+                        </div>
+                        <button onClick={() => setCurrentRoom(null)} className="text-sm text-gray-400 hover:text-gray-600 underline">← Back</button>
+                    </div>
+
+                    {/* Stage info — matches Streamlit st.info() */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+                        {stageInfo[stage]}
+                    </div>
+
+                    {/* Consultation controls — matches Streamlit col1/col2 buttons */}
+                    {stage === 'initial' && (
+                        <div>
+                            <p className="text-sm font-semibold text-gray-700 mb-2">Ready to start specialist consultation?</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => runConsultation('start')} disabled={consultLoading}
+                                    className="py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                                    🩺 Start Step-by-Step
+                                </button>
+                                <button onClick={() => runConsultation('auto')} disabled={consultLoading}
+                                    className="py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50">
+                                    ⚡ Auto Complete Consultation
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {stage === 'specialists' && (
+                        <div className="grid grid-cols-2 gap-3">
+                            <button onClick={() => runConsultation('next')} disabled={consultLoading}
+                                className="py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                                👨‍⚕️ Get Next Specialist Opinion
+                            </button>
+                            {opinions.length >= 2 && (
+                                <button onClick={() => runConsultation('summary')} disabled={consultLoading}
+                                    className="py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                                    📋 Get Multidisciplinary Summary
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {stage === 'summary' && (
+                        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-800">
+                            ✅ Multidisciplinary summary completed! Continue discussion or ask follow-up questions.
+                        </div>
+                    )}
+
+                    {/* Progress bar — matches Streamlit st.progress() */}
+                    {consultLoading && (
+                        <div className="space-y-1">
+                            <p className="text-xs text-purple-600 animate-pulse">{statusMsg || '⏳ AI specialists are reviewing...'}</p>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                <div className="bg-purple-600 h-1.5 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Messages — matches Streamlit st.chat_message */}
+                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="h-[380px] overflow-y-auto p-4 space-y-3">
+                            {messages.map(msg => (
+                                <div key={msg.id} className="flex gap-3 items-start">
+                                    <span className="text-2xl flex-shrink-0 mt-0.5">{avatar(msg)}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-semibold text-gray-600 mb-1">{msg.user}</p>
+                                        <div className={`text-sm rounded-2xl px-4 py-2 whitespace-pre-wrap break-words ${msg.type === 'system' ? 'bg-blue-50 text-blue-800 border border-blue-200' :
+                                            msg.type === 'ai_response' ? 'bg-green-50 text-gray-800 border border-green-200' :
+                                                msg.type === 'annotation' ? 'bg-yellow-50 text-gray-800 border border-yellow-200' :
+                                                    'bg-gray-100 text-gray-800'
+                                            }`}>
+                                            {msg.content}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                            <div ref={bottomRef} />
+                        </div>
+
+                        {/* Chat input — matches Streamlit st.chat_input */}
+                        <div className="border-t border-gray-200 p-3 flex gap-2">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                                placeholder="Type your message or question here..."
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                            />
+                            <button onClick={sendMessage} disabled={!input.trim()}
+                                className="px-5 py-2 bg-purple-600 text-white rounded-xl text-sm hover:bg-purple-700 disabled:opacity-50">
+                                Send
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Image annotation expander — matches Streamlit st.expander */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                        <button
+                            onClick={() => setShowAnnotation(!showAnnotation)}
+                            className="w-full flex justify-between items-center px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                            <span>Add Image Annotation</span>
+                            <span>{showAnnotation ? '▲' : '▼'}</span>
+                        </button>
+                        {showAnnotation && (
+                            <div className="p-4 border-t border-gray-200 space-y-3">
+                                <textarea
+                                    value={annotation}
+                                    onChange={e => setAnnotation(e.target.value)}
+                                    placeholder="Describe what you see in the image"
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none"
+                                />
+                                <button onClick={submitAnnotation} disabled={!annotation.trim()}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 disabled:opacity-50">
+                                    Submit Annotation
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }

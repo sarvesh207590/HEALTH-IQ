@@ -23,18 +23,19 @@ export default function DashboardTab({ setActiveTab }: DashboardTabProps) {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await fetch('/api/reports?limit=3');
-      const data = await response.json();
-      
-      if (data.success) {
-        setRecentAnalyses(data.data);
+      const [reportsRes, statsRes] = await Promise.all([
+        fetch('/api/reports?limit=3'),
+        fetch('/api/stats'),
+      ]);
+      const reportsData = await reportsRes.json();
+      const statsData = await statsRes.json();
+
+      if (reportsData.success) setRecentAnalyses(reportsData.data);
+      if (statsData.success) {
         setStats({
-          todayAnalyses: data.data.filter((a: any) => {
-            const today = new Date().toDateString();
-            return new Date(a.createdAt).toDateString() === today;
-          }).length,
-          activeDiscussions: 0, // TODO: fetch from chat API
-          totalReports: data.data.length,
+          todayAnalyses: statsData.data.todayAnalyses,
+          activeDiscussions: statsData.data.activeDiscussions,
+          totalReports: statsData.data.totalReports,
         });
       }
     } catch (error) {
@@ -133,13 +134,13 @@ export default function DashboardTab({ setActiveTab }: DashboardTabProps) {
         ) : recentAnalyses.length > 0 ? (
           <div className="space-y-4">
             {recentAnalyses.map((analysis, index) => (
-              <div key={analysis.id} className="bg-white border border-gray-200 rounded-lg p-4">
+              <div key={analysis.id || index} className="bg-white border border-gray-200 rounded-lg p-4">
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="font-semibold text-gray-900">
                     📋 Analysis #{index + 1}: {analysis.filename}
                   </h4>
                   <span className="text-sm text-gray-500">
-                    {new Date(analysis.createdAt).toLocaleDateString()}
+                    {String(analysis.date || '').slice(0, 10)}
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 line-clamp-3">

@@ -1,27 +1,41 @@
-import { auth } from '@/lib/auth';
-import { NextResponse } from 'next/server';
+// Middleware runs in Edge runtime - must NOT import mongodb or any Node.js modules
+// Use NextAuth's built-in JWT check instead of the full auth() which touches the DB
+import { NextRequest, NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth;
-  const isProtectedRoute = req.nextUrl.pathname.startsWith('/dashboard') ||
-    req.nextUrl.pathname.startsWith('/upload') ||
-    req.nextUrl.pathname.startsWith('/chat') ||
-    req.nextUrl.pathname.startsWith('/qa') ||
-    req.nextUrl.pathname.startsWith('/reports') ||
-    req.nextUrl.pathname.startsWith('/api/upload') ||
-    req.nextUrl.pathname.startsWith('/api/analyze') ||
-    req.nextUrl.pathname.startsWith('/api/chat') ||
-    req.nextUrl.pathname.startsWith('/api/consultation') ||
-    req.nextUrl.pathname.startsWith('/api/qa') ||
-    req.nextUrl.pathname.startsWith('/api/reports') ||
-    req.nextUrl.pathname.startsWith('/api/pubmed');
+const PROTECTED_PATHS = [
+  '/dashboard',
+  '/upload',
+  '/chat',
+  '/qa',
+  '/reports',
+  '/api/upload',
+  '/api/analyze',
+  '/api/chat',
+  '/api/consultation',
+  '/api/qa',
+  '/api/reports',
+  '/api/pubmed',
+]
 
-  if (isProtectedRoute && !isLoggedIn) {
-    return NextResponse.redirect(new URL('/login', req.url));
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  const isProtected = PROTECTED_PATHS.some(p => pathname.startsWith(p))
+  if (!isProtected) return NextResponse.next()
+
+  // getToken only reads the JWT cookie - no DB, no Node.js modules, Edge-safe
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  })
+
+  if (!token) {
+    return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  return NextResponse.next();
-});
+  return NextResponse.next()
+}
 
 export const config = {
   matcher: [
@@ -38,4 +52,4 @@ export const config = {
     '/api/reports/:path*',
     '/api/pubmed/:path*',
   ],
-};
+}

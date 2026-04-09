@@ -1,296 +1,171 @@
-// Chat Service - translated from Python chat_system.py
-import { prisma } from '@/lib/db/prisma'
+// Chat Service - aligned with Python chat_system.py
+// Uses "chats" collection with embedded messages (same as Python)
+import { v4 as uuidv4 } from 'uuid'
+import { chatsCol, EmbeddedMessage, serializeDoc } from '@/lib/db/collections'
 import { openai } from '@/lib/ai/openai'
 import { getSpecialistPrompt, getSummaryPrompt, type SpecialistType } from '@/lib/ai/prompts'
 
-// ChatRoomManager class for API routes
-export class ChatRoomManager {
-  // Translate from Python create_chat_room()
-  async createChatRoom(
-    userName: string,
-    roomName: string,
+const DEFAULT_PARTICIPANTS = [
+    'Dr. Sarah Chen (Cardiologist)',
+    'Dr. Michael Rodriguez (Radiologist)',
+    'Dr. Emily Johnson (Pulmonologist)',
+    'Dr. David Park (Neurologist)',
+    'Dr. Lisa Thompson (Chief Medical Officer)',
+]
+
+// Matches Python create_chat_room()
+export async function createChatRoom(
+    caseId: string,
+    creatorName: string,
     caseDescription: string,
     userId: string
-  ) {
-    const room = await prisma.chatRoom.create({
-      data: {
-        userId,
-        name: roomName,
+) {
+    const col = await chatsCol()
+
+    // Check if room already exists (Python does this too)
+    const existing = await col.findOne({ _id: caseId as any })
+    if (existing) return caseId
+
+    const now = new Date().toISOString()
+    const welcomeMessage: EmbeddedMessage = {
+        id: uuidv4(),
+        user: 'System',
+        content: `🏥 **Multidisciplinary Consultation Started**\n\nCase: '${caseDescription}'\n\n**Consultation Process:**\n1. Present your case and questions\n2. Get opinions from 3-4 specialists\n3. Receive a unified summary in simple language\n4. Discuss next steps\n\nReady to begin the consultation!`,
+        type: 'system',
+        timestamp: now,
+    }
+
+    await col.insertOne({
+        _id: caseId as any,
+        user_id: userId,
+        created_at: now,
+        creator: creatorName,
         description: caseDescription,
-        type: 'CASE_DISCUSSION',
-        participants: [
-          'Dr. Sarah Chen (Cardiologist)',
-          'Dr. Michael Rodriguez (Radiologist)',
-          'Dr. Emily Johnson (Pulmonologist)',
-          'Dr. David Park (Neurologist)',
-          'Dr. Lisa Thompson (Chief Medical Officer)',
-        ],
-        messages: {
-          create: {
-            userId,
-            content: `🏥 **Multidisciplinary Consultation Started**\n\nCase: '${caseDescription}'\n\n**Consultation Process:**\n1. Present your case and questions\n2. Get opinions from 3-4 specialists\n3. Receive a unified summary in simple language\n4. Discuss next steps\n\nReady to begin the consultation!`,
-            type: 'SYSTEM',
-          },
-        },
-      },
-      include: {
-        messages: true,
-      },
+        participants: [creatorName, ...DEFAULT_PARTICIPANTS],
+        consultation_stage: 'initial',
+        specialist_opinions: [],
+        messages: [welcomeMessage],
     })
 
-    return room.id
-  }
-
-  // Translate from Python add_message()
-  async addMessage(
-    chatRoomId: string,
-    userName: string,
-    content: string
-  ) {
-    // Get user from session or create a system message
-    const message = await prisma.message.create({
-      data: {
-        chatRoomId,
-        userId: 'system', // This should be replaced with actual userId from session
-        content,
-        type: 'TEXT',
-      },
-    })
-
-    return message
-  }
-
-  // Translate from Python get_messages()
-  async getMessages(chatRoomId: string, limit = 50) {
-    const messages = await prisma.message.findMany({
-      where: { chatRoomId },
-      orderBy: { createdAt: 'asc' },
-      take: limit,
-    })
-
-    return messages
-  }
-
-  // Get chat rooms for user
-  async getChatRooms(userId: string) {
-    const rooms = await prisma.chatRoom.findMany({
-      where: { userId },
-      include: {
-        messages: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
-        },
-        _count: {
-          select: { messages: true },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    })
-
-    return rooms
-  }
-
-  // Get chat room by ID
-  async getChatRoom(roomId: string, userId: string) {
-    const room = await prisma.chatRoom.findFirst({
-      where: {
-        id: roomId,
-        userId,
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'asc' },
-        },
-        consultation: true,
-      },
-    })
-
-    return room
-  }
+    return caseId
 }
 
-// Standalone functions for backward compatibility
-// Translate from Python create_chat_room()
-export async function createChatRoom(
-  userId: string,
-  name: string,
-  description: string,
-  type: 'CASE_DISCUSSION' | 'CONSULTATION' | 'TEAM_CHAT' = 'CASE_DISCUSSION'
-) {
-  const room = await prisma.chatRoom.create({
-    data: {
-      userId,
-      name,
-      description,
-      type,
-      participants: [
-        'Dr. Sarah Chen (Cardiologist)',
-        'Dr. Michael Rodriguez (Radiologist)',
-        'Dr. Emily Johnson (Pulmonologist)',
-        'Dr. David Park (Neurologist)',
-        'Dr. Lisa Thompson (Chief Medical Officer)',
-      ],
-      messages: {
-        create: {
-          userId,
-          content: `🏥 **Multidisciplinary Consultation Started**\n\nCase: '${description}'\n\n**Consultation Process:**\n1. Present your case and questions\n2. Get opinions from 3-4 specialists\n3. Receive a unified summary in simple language\n4. Discuss next steps\n\nReady to begin the consultation!`,
-          type: 'SYSTEM',
-        },
-      },
-    },
-    include: {
-      messages: true,
-    },
-  })
-
-  return room
-}
-
-// Translate from Python add_message()
+// Matches Python add_message()
 export async function addMessage(
-  chatRoomId: string,
-  userId: string,
-  content: string,
-  type: 'TEXT' | 'SYSTEM' | 'AI_RESPONSE' | 'ANNOTATION' = 'TEXT'
+    caseId: string,
+    userName: string,
+    content: string,
+    userId: string,
+    messageType: EmbeddedMessage['type'] = 'text'
 ) {
-  const message = await prisma.message.create({
-    data: {
-      chatRoomId,
-      userId,
-      content,
-      type,
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          role: true,
-        },
-      },
-    },
-  })
+    if (!content.trim()) return null
 
-  return message
+    const col = await chatsCol()
+    const messageData: EmbeddedMessage = {
+        id: uuidv4(),
+        user: userName,
+        content,
+        type: messageType,
+        timestamp: new Date().toISOString(),
+    }
+
+    const result = await col.updateOne(
+        { _id: caseId as any, user_id: userId },
+        { $push: { messages: messageData } }
+    )
+
+    return result.modifiedCount > 0 ? messageData : null
 }
 
-// Translate from Python get_messages()
-export async function getMessages(chatRoomId: string, limit = 50) {
-  const messages = await prisma.message.findMany({
-    where: { chatRoomId },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          role: true,
-        },
-      },
-    },
-    orderBy: { createdAt: 'asc' },
-    take: limit,
-  })
-
-  return messages
+// Matches Python get_messages()
+export async function getMessages(caseId: string, userId: string, limit = 50) {
+    const col = await chatsCol()
+    const room = await col.findOne({ _id: caseId as any, user_id: userId })
+    if (!room) return []
+    const msgs = room.messages || []
+    return msgs.length > limit ? msgs.slice(-limit) : msgs
 }
 
-// Translate from Python get_specialist_response()
+// Matches Python get_available_rooms()
+export async function getAvailableRooms(userId: string) {
+    const col = await chatsCol()
+    const rooms = await col.find({ user_id: userId }).toArray()
+    return rooms
+        .map(r => ({
+            id: r._id?.toString(),
+            description: r.description,
+            creator: r.creator,
+            created_at: r.created_at,
+            participants: r.participants?.length ?? 0,
+            consultation_stage: r.consultation_stage,
+        }))
+        .sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
+}
+
+// Matches Python join_chat_room()
+export async function joinChatRoom(caseId: string, userName: string, userId: string) {
+    const col = await chatsCol()
+    const room = await col.findOne({ _id: caseId as any, user_id: userId })
+    if (!room) return false
+
+    if (!room.participants.includes(userName)) {
+        await col.updateOne(
+            { _id: caseId as any, user_id: userId },
+            { $push: { participants: userName } }
+        )
+    }
+    return true
+}
+
+export async function getChatRoom(caseId: string, userId: string) {
+    const col = await chatsCol()
+    const room = await col.findOne({ _id: caseId as any, user_id: userId })
+    return room ? serializeDoc(room as any) : null
+}
+
+// AI specialist response (same logic as Python)
 export async function getSpecialistResponse(
-  specialistType: SpecialistType,
-  caseDescription: string,
-  findings?: string[]
+    specialistType: SpecialistType,
+    caseDescription: string,
+    findings?: string[]
 ): Promise<string> {
-  try {
-    const prompt = getSpecialistPrompt(specialistType, caseDescription, findings)
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: 'Please provide your initial assessment of this case' },
-      ],
-      max_tokens: 200,
-      temperature: 0.3,
-    })
-
-    return response.choices[0].message.content || 'No response generated'
-  } catch (error) {
-    console.error('Error getting specialist response:', error)
-    return 'I encountered an error while analyzing this case.'
-  }
+    try {
+        const prompt = getSpecialistPrompt(specialistType, caseDescription, findings)
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: prompt },
+                { role: 'user', content: 'Please provide your initial assessment of this case' },
+            ],
+            max_tokens: 200,
+            temperature: 0.3,
+        })
+        return response.choices[0].message.content || 'No response generated'
+    } catch (error) {
+        console.error('Error getting specialist response:', error)
+        return 'I encountered an error while analyzing this case.'
+    }
 }
 
-// Translate from Python get_multidisciplinary_summary()
 export async function getMultidisciplinarySummary(
-  caseDescription: string,
-  specialistOpinions: string[],
-  findings?: string[]
+    caseDescription: string,
+    specialistOpinions: string[],
+    findings?: string[]
 ): Promise<string> {
-  try {
-    const prompt = getSummaryPrompt(caseDescription, specialistOpinions, findings)
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: 'Please provide the multidisciplinary summary.' },
-      ],
-      max_tokens: 400,
-      temperature: 0.2,
-    })
-
-    return response.choices[0].message.content || 'No summary generated'
-  } catch (error) {
-    console.error('Error generating summary:', error)
-    return 'I encountered an error while generating the summary.'
-  }
-}
-
-// Get chat rooms for user
-export async function getChatRooms(userId: string) {
-  const rooms = await prisma.chatRoom.findMany({
-    where: { userId },
-    include: {
-      messages: {
-        take: 1,
-        orderBy: { createdAt: 'desc' },
-      },
-      _count: {
-        select: { messages: true },
-      },
-    },
-    orderBy: { updatedAt: 'desc' },
-  })
-
-  return rooms
-}
-
-// Get chat room by ID
-export async function getChatRoom(roomId: string, userId: string) {
-  const room = await prisma.chatRoom.findFirst({
-    where: {
-      id: roomId,
-      userId,
-    },
-    include: {
-      messages: {
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'asc' },
-      },
-      consultation: true,
-    },
-  })
-
-  return room
+    try {
+        const prompt = getSummaryPrompt(caseDescription, specialistOpinions, findings)
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: prompt },
+                { role: 'user', content: 'Please provide the multidisciplinary summary.' },
+            ],
+            max_tokens: 400,
+            temperature: 0.2,
+        })
+        return response.choices[0].message.content || 'No summary generated'
+    } catch (error) {
+        console.error('Error generating summary:', error)
+        return 'I encountered an error while generating the summary.'
+    }
 }

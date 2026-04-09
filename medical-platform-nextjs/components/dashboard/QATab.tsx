@@ -1,170 +1,202 @@
 'use client';
+import { useState, useEffect, useRef } from 'react';
+import { useSession } from 'next-auth/react';
 
-import { useState, useEffect } from 'react';
+interface QARoom { id: string; name: string; creator: string; created_at: string; }
+interface QAMessage { id: string; user: string; content: string; timestamp: string; }
 
 export default function QATab() {
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
-  const [showCreateRoom, setShowCreateRoom] = useState(false);
+  const { data: session } = useSession();
+  const [rooms, setRooms] = useState<QARoom[]>([]);
+  const [currentRoom, setCurrentRoom] = useState<QARoom | null>(null);
+  const [messages, setMessages] = useState<QAMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [roomName, setRoomName] = useState('');
+  const [tab, setTab] = useState<'join' | 'create'>('join');
+  const [creating, setCreating] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchRooms();
-  }, []);
+  useEffect(() => { loadRooms(); }, []);
+  useEffect(() => { if (currentRoom) loadMessages(); }, [currentRoom?.id]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const fetchRooms = async () => {
-    try {
-      const response = await fetch('/api/qa/rooms');
-      const data = await response.json();
-      if (data.success) {
-        setRooms(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching QA rooms:', error);
-    }
+  const loadRooms = async () => {
+    const res = await fetch('/api/qa/rooms');
+    const d = await res.json();
+    if (d.success) setRooms(d.data);
   };
 
-  const handleCreateRoom = async () => {
-    if (!newRoomName) return;
-    try {
-      const response = await fetch('/api/qa/rooms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName: newRoomName }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setNewRoomName('');
-        setShowCreateRoom(false);
-        fetchRooms();
-        setSelectedRoom(data.data.roomId);
-      }
-    } catch (error) {
-      console.error('Error creating QA room:', error);
-    }
+  const loadMessages = async (room?: QARoom) => {
+    const target = room || currentRoom;
+    if (!target) return;
+    const res = await fetch(`/api/qa/${target.id}/messages`);
+    const d = await res.json();
+    if (d.success) setMessages(d.data);
   };
 
-  const handleAskQuestion = async () => {
-    if (!question.trim()) return;
-    setLoading(true);
-    setAnswer('');
+  const handleCreate = async () => {
+    if (!roomName.trim()) return;
+    setCreating(true);
     try {
-      const response = await fetch('/api/qa/answer', {
+      const res = await fetch('/api/qa/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ roomName: roomName.trim() }),
       });
-      const data = await response.json();
-      if (data.success) {
-        setAnswer(data.data.answer);
+      const d = await res.json();
+      if (d.success) {
+        setRoomName('');
+        await loadRooms();
+        const r2 = await fetch('/api/qa/rooms');
+        const d2 = await r2.json();
+        if (d2.success) {
+          const nr = d2.data.find((r: QARoom) => r.id === d.data.roomId);
+          if (nr) { setCurrentRoom(nr); setTab('join'); }
+        }
       }
-    } catch (error) {
-      console.error('Error asking question:', error);
-      setAnswer('Failed to get answer. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setCreating(false); }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim() || !currentRoom || sending) return;
+    const q = input.trim();
+    setInput('');
+    setSending(true);
+    setMessages(prev => [...prev, { id: `tmp-${Date.now()}`, user: session?.user?.name || 'User', content: q, timestamp: new Date().toISOString() }]);
+    try {
+      await fetch(`/api/qa/${currentRoom.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: q }),
+      });
+      await loadMessages(currentRoom);
+    } finally { setSending(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!currentRoom) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/qa/${currentRoom.id}`, { method: 'DELETE' });
+      setCurrentRoom(null); setMessages([]); setShowSettings(false);
+      await loadRooms();
+    } finally { setDeleting(false); }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* QA Rooms List */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold text-gray-900">Q&A Sessions</h3>
-          <button
-            onClick={() => setShowCreateRoom(!showCreateRoom)}
-            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-          >
-            + New
-          </button>
-        </div>
-
-        {showCreateRoom && (
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg space-y-2">
-            <input
-              type="text"
-              placeholder="Session name"
-              value={newRoomName}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            />
-            <button
-              onClick={handleCreateRoom}
-              className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-            >
-              Create Session
-            </button>
-          </div>
-        )}
-
-        <div className="space-y-2">
-          {rooms.map((room) => (
-            <button
-              key={room.id}
-              onClick={() => setSelectedRoom(room.id)}
-              className={`w-full text-left p-3 rounded-lg transition ${
-                selectedRoom === room.id
-                  ? 'bg-green-100 border-2 border-green-600'
-                  : 'bg-gray-50 hover:bg-gray-100'
-              }`}
-            >
-              <div className="font-semibold text-sm text-gray-900">{room.name}</div>
-              <div className="text-xs text-gray-500 mt-1">by {room.creator}</div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[680px]">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-3 overflow-y-auto">
+        <h3 className="font-bold text-gray-900">🩺 Medical Report Q&A</h3>
+        <div className="flex rounded-lg overflow-hidden border border-gray-200">
+          {(['join', 'create'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 py-2 text-xs font-medium transition ${tab === t ? 'bg-green-600 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+              {t === 'join' ? 'Join Existing' : 'Create New'}
             </button>
           ))}
-          {rooms.length === 0 && (
-            <p className="text-sm text-gray-500 text-center py-4">No sessions yet</p>
-          )}
-        </div>
-      </div>
-
-      {/* Q&A Interface */}
-      <div className="lg:col-span-2 space-y-6">
-        <div className="bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 rounded-lg p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            ❓ Ask Questions About Your Medical Reports
-          </h3>
-          <p className="text-sm text-gray-600">
-            Our AI will search through your analyzed reports and provide answers based on the findings.
-          </p>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Your Question
-          </label>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder="e.g., What are the common findings in my chest X-rays?"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 resize-none"
-            rows={4}
-          />
-          <button
-            onClick={handleAskQuestion}
-            disabled={loading || !question.trim()}
-            className="mt-4 w-full bg-gradient-to-r from-green-600 to-teal-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
-          >
-            {loading ? '🤔 Thinking...' : '🔍 Get Answer'}
-          </button>
-        </div>
-
-        {answer && (
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h4 className="font-semibold text-gray-900 mb-3">Answer:</h4>
-            <div className="prose prose-sm max-w-none">
-              <p className="text-gray-700 whitespace-pre-wrap">{answer}</p>
-            </div>
+        {tab === 'join' && (
+          <div className="space-y-2 flex-1 overflow-y-auto">
+            {rooms.length === 0
+              ? <p className="text-sm text-gray-400 text-center py-6">No active Q&A rooms. Create a new one!</p>
+              : rooms.map(room => (
+                <button key={room.id} onClick={() => { setCurrentRoom(room); loadMessages(room); }}
+                  className={`w-full text-left p-3 rounded-lg border transition ${currentRoom?.id === room.id ? 'bg-green-50 border-green-400' : 'bg-gray-50 border-transparent hover:bg-gray-100'}`}>
+                  <div className="font-semibold text-sm text-gray-900 truncate">{room.name}</div>
+                  <div className="text-xs text-gray-500">by {room.creator}</div>
+                  <div className="text-xs text-gray-400">{String(room.created_at).slice(0, 10)}</div>
+                </button>
+              ))
+            }
           </div>
         )}
 
-        {loading && (
-          <div className="flex justify-center py-8">
-            <div className="spinner"></div>
+        {tab === 'create' && (
+          <div className="space-y-3">
+            <input type="text" placeholder="Q&A Room Name" value={roomName}
+              onChange={e => setRoomName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:outline-none" />
+            <button onClick={handleCreate} disabled={creating || !roomName.trim()}
+              className="w-full py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+              {creating ? 'Creating...' : 'Create Q&A Room'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl flex flex-col overflow-hidden">
+        {currentRoom ? (
+          <>
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-gray-900">Q&A Room: {currentRoom.name}</h3>
+                  <p className="text-xs text-gray-500">Created by {currentRoom.creator} on {String(currentRoom.created_at).slice(0, 10)}</p>
+                </div>
+                <button onClick={() => setShowSettings(!showSettings)} className="text-gray-400 hover:text-gray-600 text-sm px-2 py-1 rounded">⚙️ Settings</button>
+              </div>
+              {showSettings && (
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-sm text-gray-600 mb-2">Delete this Q&A room permanently?</p>
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50">
+                    {deleting ? 'Deleting...' : '🗑️ Delete Q&A Room'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map(msg => {
+                const isAI = msg.user === 'Report QA System';
+                return (
+                  <div key={msg.id} className="flex gap-3 items-start">
+                    <span className="text-2xl flex-shrink-0">{isAI ? '🤖' : '👨‍⚕️'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-600 mb-1">{msg.user}</p>
+                      <div className={`text-sm rounded-2xl px-4 py-2 whitespace-pre-wrap break-words ${isAI ? 'bg-green-50 border border-green-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}>
+                        {msg.content}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {sending && (
+                <div className="flex gap-3 items-start">
+                  <span className="text-2xl">🤖</span>
+                  <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-2">
+                    <span className="text-sm text-gray-500 animate-pulse">Report QA System is thinking...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex gap-2">
+                <input type="text" value={input} onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                  placeholder="Ask a question about your medical reports"
+                  disabled={sending}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:outline-none disabled:opacity-50" />
+                <button onClick={handleSend} disabled={sending || !input.trim()}
+                  className="px-5 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 text-sm font-medium">
+                  {sending ? '...' : 'Ask'}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
+            <div className="text-5xl">🩺</div>
+            <p className="text-sm font-medium">Select a Q&A room or create a new one</p>
+            <p className="text-xs text-gray-400">Ask questions about your analyzed medical reports</p>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession, signOut } from 'next-auth/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardTab from '@/components/dashboard/DashboardTab';
 import UploadTab from '@/components/dashboard/UploadTab';
@@ -10,15 +10,25 @@ import QATab from '@/components/dashboard/QATab';
 import ReportsTab from '@/components/dashboard/ReportsTab';
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(0);
   const [enableXAI, setEnableXAI] = useState(true);
   const [includeReferences, setIncludeReferences] = useState(true);
 
-  if (!session) {
-    router.push('/login');
-    return null;
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [status, router]);
+
+  // Show nothing while loading or redirecting
+  if (status === 'loading' || !session) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
   }
 
   const tabs = [
@@ -91,11 +101,10 @@ export default function DashboardPage() {
               <button
                 key={index}
                 onClick={() => setActiveTab(index)}
-                className={`flex-1 px-6 py-4 text-sm font-medium transition ${
-                  activeTab === index
+                className={`flex-1 px-6 py-4 text-sm font-medium transition ${activeTab === index
                     ? 'border-b-2 border-purple-600 text-purple-600 bg-purple-50'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>

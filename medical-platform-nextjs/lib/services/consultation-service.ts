@@ -1,235 +1,56 @@
-// Consultation Service - translated from Python chat_system.py consultation workflow
-import { prisma } from '@/lib/db/prisma'
+// Consultation Service - aligned with Python chat_system.py consultation workflow
+// Stage and specialist_opinions stored on the chat room doc (same as Python)
+import { v4 as uuidv4 } from 'uuid'
+import { chatsCol } from '@/lib/db/collections'
 import { getSpecialistResponse, getMultidisciplinarySummary, addMessage } from './chat-service'
+import type { SpecialistType } from '@/lib/ai/prompts'
 
-const SPECIALISTS: Array<{
-  type: 'radiologist' | 'cardiologist' | 'pulmonologist' | 'neurologist'
-  name: string
-  emoji: string
-}> = [
-  { type: 'radiologist', name: 'Dr. Michael Rodriguez (Radiologist)', emoji: '🔬' },
-  { type: 'cardiologist', name: 'Dr. Sarah Chen (Cardiologist)', emoji: '❤️' },
-  { type: 'pulmonologist', name: 'Dr. Emily Johnson (Pulmonologist)', emoji: '🫁' },
+const SPECIALISTS: Array<{ type: SpecialistType; name: string }> = [
+  { type: 'radiologist', name: 'Dr. Michael Rodriguez (Radiologist)' },
+  { type: 'cardiologist', name: 'Dr. Sarah Chen (Cardiologist)' },
+  { type: 'pulmonologist', name: 'Dr. Emily Johnson (Pulmonologist)' },
 ]
 
-// ConsultationWorkflow class for API routes
-export class ConsultationWorkflow {
-  private apiKey: string;
-
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
-
-  async processConsultation(
-    roomId: string,
-    userMessage: string,
-    conversationHistory: Array<{ role: string; content: string }>
-  ) {
-    // Find or create consultation for this room
-    let consultation = await prisma.consultation.findFirst({
-      where: { chatRoomId: roomId },
-    });
-
-    if (!consultation) {
-      // Create new consultation
-      const chatRoom = await prisma.chatRoom.findUnique({
-        where: { id: roomId },
-      });
-
-      if (!chatRoom) {
-        throw new Error('Chat room not found');
-      }
-
-      consultation = await prisma.consultation.create({
-        data: {
-          chatRoomId: roomId,
-          userId: chatRoom.userId,
-          stage: 'INITIAL',
-          specialistOpinions: [],
-        },
-      });
-    }
-
-    // Process based on stage
-    if (consultation.stage === 'INITIAL') {
-      // Start consultation with specialists
-      return await this.startConsultationProcess(
-        consultation.id,
-        roomId,
-        consultation.userId,
-        userMessage
-      );
-    } else if (consultation.stage === 'SPECIALISTS') {
-      // Continue getting specialist opinions
-      return await this.continueConsultation(
-        consultation.id,
-        roomId,
-        consultation.userId,
-        userMessage
-      );
-    } else {
-      // Consultation complete, just respond
-      return {
-        message: 'Consultation is complete. You can ask follow-up questions.',
-        stage: consultation.stage,
-      };
-    }
-  }
-
-  private async startConsultationProcess(
-    consultationId: string,
-    chatRoomId: string,
-    userId: string,
-    caseDescription: string
-  ) {
-    // Update stage
-    await prisma.consultation.update({
-      where: { id: consultationId },
-      data: { stage: 'SPECIALISTS' },
-    });
-
-    // Get first specialist opinion
-    const specialist = SPECIALISTS[0];
-    const response = await getSpecialistResponse(specialist.type, caseDescription);
-
-    // Store opinion
-    await prisma.consultation.update({
-      where: { id: consultationId },
-      data: {
-        specialistOpinions: [response],
-      },
-    });
-
-    return {
-      message: response,
-      specialist: specialist.name,
-      stage: 'SPECIALISTS',
-    };
-  }
-
-  private async continueConsultation(
-    consultationId: string,
-    chatRoomId: string,
-    userId: string,
-    caseDescription: string
-  ) {
-    const consultation = await prisma.consultation.findUnique({
-      where: { id: consultationId },
-    });
-
-    if (!consultation) {
-      throw new Error('Consultation not found');
-    }
-
-    const opinions = consultation.specialistOpinions as string[];
-    const nextIndex = opinions.length;
-
-    if (nextIndex >= SPECIALISTS.length) {
-      // All specialists done, generate summary
-      const summary = await getMultidisciplinarySummary(caseDescription, opinions);
-
-      await prisma.consultation.update({
-        where: { id: consultationId },
-        data: {
-          stage: 'COMPLETE',
-          summary,
-        },
-      });
-
-      return {
-        message: summary,
-        stage: 'COMPLETE',
-        isSummary: true,
-      };
-    }
-
-    // Get next specialist opinion
-    const specialist = SPECIALISTS[nextIndex];
-    const response = await getSpecialistResponse(specialist.type, caseDescription);
-
-    await prisma.consultation.update({
-      where: { id: consultationId },
-      data: {
-        specialistOpinions: [...opinions, response],
-      },
-    });
-
-    return {
-      message: response,
-      specialist: specialist.name,
-      stage: 'SPECIALISTS',
-    };
-  }
-}
-
-// Standalone functions for backward compatibility
-// Create consultation
-export async function createConsultation(chatRoomId: string, userId: string) {
-  const consultation = await prisma.consultation.create({
-    data: {
-      chatRoomId,
-      userId,
-      stage: 'INITIAL',
-      specialistOpinions: [],
-    },
-  })
-
-  return consultation
-}
-
-// Start consultation (translate from Python start_consultation)
+// Matches Python render_chat_interface() "Start Step-by-Step" button
 export async function startConsultation(
-  consultationId: string,
-  chatRoomId: string,
+  caseId: string,
   userId: string,
-  caseDescription: string,
   findings?: string[]
 ) {
-  // Update stage to SPECIALISTS
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: { stage: 'SPECIALISTS' },
-  })
+  const col = await chatsCol()
+  const room = await col.findOne({ _id: caseId as any, user_id: userId })
+  if (!room) throw new Error('Chat room not found')
 
-  // Get first specialist opinion (Radiologist)
-  const response = await getSpecialistResponse('radiologist', caseDescription, findings)
-
-  // Add message to chat
-  await addMessage(
-    chatRoomId,
-    userId,
-    `**${SPECIALISTS[0].name} Opinion:**\n\n${response}`,
-    'AI_RESPONSE'
+  // Update stage to specialists
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $set: { consultation_stage: 'specialists' } }
   )
 
-  // Store opinion
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: {
-      specialistOpinions: [response],
-    },
-  })
+  // Get first specialist opinion (Radiologist)
+  const specialist = SPECIALISTS[0]
+  const response = await getSpecialistResponse(specialist.type, room.description, findings)
 
-  return response
+  await addMessage(caseId, specialist.name, response, userId, 'ai_response')
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $push: { specialist_opinions: response } }
+  )
+
+  return { specialist: specialist.name, response, stage: 'specialists' }
 }
 
-// Get next specialist opinion
+// Matches Python "Get Next Specialist Opinion" button
 export async function getNextSpecialistOpinion(
-  consultationId: string,
-  chatRoomId: string,
+  caseId: string,
   userId: string,
-  caseDescription: string,
   findings?: string[]
 ) {
-  const consultation = await prisma.consultation.findUnique({
-    where: { id: consultationId },
-  })
+  const col = await chatsCol()
+  const room = await col.findOne({ _id: caseId as any, user_id: userId })
+  if (!room) throw new Error('Chat room not found')
 
-  if (!consultation) {
-    throw new Error('Consultation not found')
-  }
-
-  const opinions = consultation.specialistOpinions as string[]
+  const opinions = room.specialist_opinions || []
   const nextIndex = opinions.length
 
   if (nextIndex >= SPECIALISTS.length) {
@@ -237,133 +58,128 @@ export async function getNextSpecialistOpinion(
   }
 
   const specialist = SPECIALISTS[nextIndex]
-  const response = await getSpecialistResponse(specialist.type, caseDescription, findings)
+  const response = await getSpecialistResponse(specialist.type, room.description, findings)
 
-  // Add message
-  await addMessage(
-    chatRoomId,
-    userId,
-    `**${specialist.name} Opinion:**\n\n${response}`,
-    'AI_RESPONSE'
+  await addMessage(caseId, specialist.name, response, userId, 'ai_response')
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $push: { specialist_opinions: response } }
   )
 
-  // Update consultation
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: {
-      specialistOpinions: [...opinions, response],
-    },
-  })
-
-  return response
+  return { specialist: specialist.name, response, stage: 'specialists', opinionsCount: nextIndex + 1 }
 }
 
-// Generate summary
-export async function generateConsultationSummary(
-  consultationId: string,
-  chatRoomId: string,
+// Matches Python "Get Multidisciplinary Summary" button
+export async function generateSummary(
+  caseId: string,
   userId: string,
-  caseDescription: string,
   findings?: string[]
 ) {
-  const consultation = await prisma.consultation.findUnique({
-    where: { id: consultationId },
-  })
+  const col = await chatsCol()
+  const room = await col.findOne({ _id: caseId as any, user_id: userId })
+  if (!room) throw new Error('Chat room not found')
 
-  if (!consultation) {
-    throw new Error('Consultation not found')
-  }
+  const opinions = room.specialist_opinions || []
+  const summary = await getMultidisciplinarySummary(room.description, opinions, findings)
 
-  const opinions = consultation.specialistOpinions as string[]
-  const summary = await getMultidisciplinarySummary(caseDescription, opinions, findings)
-
-  // Add summary message
   await addMessage(
-    chatRoomId,
-    userId,
+    caseId,
+    'Dr. Lisa Thompson (Chief Medical Officer)',
     `**🏥 MULTIDISCIPLINARY SUMMARY**\n\n${summary}`,
-    'AI_RESPONSE'
+    userId,
+    'ai_response'
   )
 
-  // Update consultation
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: {
-      stage: 'SUMMARY',
-      summary,
-    },
-  })
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $set: { consultation_stage: 'summary' } }
+  )
 
-  return summary
+  return { summary, stage: 'summary' }
 }
 
-// Auto-complete consultation (translate from Python auto_progress_consultation)
+// Matches Python auto_progress_consultation()
 export async function autoCompleteConsultation(
-  consultationId: string,
-  chatRoomId: string,
+  caseId: string,
   userId: string,
-  caseDescription: string,
   findings?: string[]
 ) {
-  // Add start message
+  const col = await chatsCol()
+  const room = await col.findOne({ _id: caseId as any, user_id: userId })
+  if (!room) throw new Error('Chat room not found')
+
+  // Start message
   await addMessage(
-    chatRoomId,
-    userId,
+    caseId,
+    'System',
     '🏥 **Starting Multidisciplinary Consultation**\n\nOur specialist team is now reviewing your case...',
-    'SYSTEM'
+    userId,
+    'system'
   )
 
   const opinions: string[] = []
 
-  // Get all specialist opinions
   for (const specialist of SPECIALISTS) {
-    const response = await getSpecialistResponse(specialist.type, caseDescription, findings)
-    
+    const response = await getSpecialistResponse(specialist.type, room.description, findings)
     await addMessage(
-      chatRoomId,
+      caseId,
+      specialist.name,
+      `**${specialist.name.split('(')[1]?.replace(')', '') ?? specialist.name} Opinion:**\n\n${response}`,
       userId,
-      `**${specialist.name} Opinion:**\n\n${response}`,
-      'AI_RESPONSE'
+      'ai_response'
     )
-
     opinions.push(response)
   }
 
-  // Update consultation with opinions
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: {
-      stage: 'SPECIALISTS',
-      specialistOpinions: opinions,
-    },
-  })
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $set: { consultation_stage: 'specialists', specialist_opinions: opinions } }
+  )
 
-  // Generate summary
-  const summary = await getMultidisciplinarySummary(caseDescription, opinions, findings)
+  const summary = await getMultidisciplinarySummary(room.description, opinions, findings)
 
   await addMessage(
-    chatRoomId,
-    userId,
+    caseId,
+    'Dr. Lisa Thompson (Chief Medical Officer)',
     `**🏥 MULTIDISCIPLINARY SUMMARY**\n\n${summary}`,
-    'AI_RESPONSE'
-  )
-
-  // Add completion message
-  await addMessage(
-    chatRoomId,
     userId,
-    '✅ **Consultation Complete**\n\nYour multidisciplinary consultation is now complete. You can ask follow-up questions or discuss the findings with our team.',
-    'SYSTEM'
+    'ai_response'
   )
 
-  // Update to complete
-  await prisma.consultation.update({
-    where: { id: consultationId },
-    data: {
-      stage: 'COMPLETE',
-      summary,
-    },
-  })
+  await addMessage(
+    caseId,
+    'System',
+    '✅ **Consultation Complete**\n\nYour multidisciplinary consultation is now complete. You can ask follow-up questions or discuss the findings with our team.',
+    userId,
+    'system'
+  )
+
+  await col.updateOne(
+    { _id: caseId as any, user_id: userId },
+    { $set: { consultation_stage: 'summary' } }
+  )
 
   return { opinions, summary }
+}
+
+// API route handler - processes consultation based on current stage
+export class ConsultationWorkflow {
+  async processConsultation(caseId: string, userMessage: string, userId: string) {
+    const col = await chatsCol()
+    const room = await col.findOne({ _id: caseId as any, user_id: userId })
+    if (!room) throw new Error('Chat room not found')
+
+    const stage = room.consultation_stage
+    const opinions = room.specialist_opinions || []
+
+    if (stage === 'initial') {
+      return startConsultation(caseId, userId)
+    } else if (stage === 'specialists') {
+      if (opinions.length >= SPECIALISTS.length) {
+        return generateSummary(caseId, userId)
+      }
+      return getNextSpecialistOpinion(caseId, userId)
+    }
+    return { message: 'Consultation is complete. You can ask follow-up questions.', stage }
+  }
 }
