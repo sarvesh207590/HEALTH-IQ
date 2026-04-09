@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
             email,
             password: hashedPassword,
             full_name,
-            medical_license: medical_license || null,
-            specialization: specialization || null,
+            medical_license: medical_license || undefined,
+            specialization: specialization || undefined,
             created_at: now,
-            last_login: null,
+            last_login: undefined,
             is_verified: false,
             // Python sets role based on whether medical_license is provided
             role: medical_license ? 'doctor' : (role || 'patient'),

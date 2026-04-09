@@ -1,6 +1,6 @@
 // Type definitions - translated from Python models
 
-export type Role = 'PATIENT' | 'DOCTOR' | 'ADMIN'
+export type Role = 'patient' | 'doctor' | 'admin'
 export type FileType = 'IMAGE' | 'DICOM' | 'NIFTI'
 export type Severity = 'NORMAL' | 'MILD' | 'MODERATE' | 'SEVERE' | 'CRITICAL'
 export type ChatType = 'CASE_DISCUSSION' | 'CONSULTATION' | 'TEAM_CHAT'
