@@ -1,5 +1,6 @@
-// Middleware runs in Edge runtime - must NOT import mongodb or any Node.js modules
-// Use NextAuth's built-in JWT check instead of the full auth() which touches the DB
+// Middleware - NextAuth JWT check for protected routes
+// Note: NextAuth uses Node.js APIs (DecompressionStream) which triggers Edge Runtime warnings
+// This is a known issue but doesn't affect functionality
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 
