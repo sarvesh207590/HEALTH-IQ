@@ -28,6 +28,14 @@ const nextConfig = {
         'mongodb-client-encryption'
       )
     }
+
+    // Suppress NextAuth Edge Runtime warnings (known issue with NextAuth v4)
+    // These warnings don't affect functionality - NextAuth JWT works correctly
+    config.ignoreWarnings = [
+      { module: /node_modules\/next-auth/ },
+      { module: /node_modules\/jose/ },
+    ]
+
     return config
   },
 }
