@@ -37,3 +37,6 @@ coverage/
 # Vercel
 .vercel/
 
+# Deployment documentation (local reference only)
+DEPLOYMENT_READY.md
+

@@ -17,6 +17,14 @@ coverage/
 *.md
 !README.md
 
+# Deployment documentation (local reference only)
+DEPLOY_NOW.md
+VERCEL_DEPLOYMENT_GUIDE.md
+DEPLOYMENT_SUMMARY.md
+DEPLOYMENT_FLOWCHART.md
+README_DEPLOYMENT.md
+pre-deploy-check.js
+
 # IDE
 .vscode/
 .idea/
