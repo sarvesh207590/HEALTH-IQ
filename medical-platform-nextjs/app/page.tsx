@@ -43,7 +43,7 @@ const FEATURES = [
   {
     icon: '💬',
     title: 'Contextual Q&A',
-    desc: 'Ask anything about a report in natural language. MediScan AI recalls the full imaging context to answer follow-up questions with precision.',
+    desc: 'Ask anything about a report in natural language. Health IQ recalls the full imaging context to answer follow-up questions with precision.',
     tag: 'Conversational AI',
     accent: '#f59e0b',
     bg: '#fffbeb',
@@ -71,7 +71,7 @@ const STEPS = [
     num: '02',
     icon: '⚙️',
     title: 'AI Orchestration',
-    desc: 'MediScan AI routes your image through the appropriate specialist agents, running concurrent analysis for maximum speed.',
+    desc: 'Health IQ routes your image through the appropriate specialist agents, running concurrent analysis for maximum speed.',
   },
   {
     num: '03',
@@ -83,7 +83,7 @@ const STEPS = [
 
 const TESTIMONIALS = [
   {
-    quote: "MediScan AI has fundamentally changed how I triage complex imaging. The multi-specialist synthesis is unlike anything I've seen in clinical AI.",
+    quote: "Health IQ has fundamentally changed how I triage complex imaging. The multi-specialist synthesis is unlike anything I've seen in clinical AI.",
     name: 'Dr. Priya Sharma',
     role: 'Radiologist, Apollo Hospitals',
     avatar: '👩‍⚕️',
@@ -95,7 +95,7 @@ const TESTIMONIALS = [
     avatar: '👨‍⚕️',
   },
   {
-    quote: "We integrated MediScan AI into our telehealth workflow within a day. The HIPAA-ready architecture removed every compliance blocker.",
+    quote: "We integrated Health IQ into our telehealth workflow within a day. The HIPAA-ready architecture removed every compliance blocker.",
     name: 'Sarah Okonkwo',
     role: 'CTO, HealthBridge Telemedicine',
     avatar: '👩‍💻',
@@ -452,7 +452,7 @@ export default function Home() {
             margin: '0 auto 36px',
             lineHeight: 1.75,
           }}>
-            MediScan AI orchestrates a panel of virtual specialist agents to analyse X-rays,
+            Health IQ orchestrates a panel of virtual specialist agents to analyse X-rays,
             MRIs, and CT scans — delivering structured reports, explainable heatmaps, and
             natural-language Q&A from a single upload.
           </p>
@@ -662,7 +662,7 @@ export default function Home() {
             Clinical Stories
           </span>
           <h2 style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.8rem)', fontWeight: 800, letterSpacing: '-0.03em', color: '#0f172a', lineHeight: 1.15, marginBottom: 48 }}>
-            Physicians trust MediScan AI
+            Physicians trust Health IQ
           </h2>
 
           <div style={{ position: 'relative', minHeight: 240 }}>
@@ -718,7 +718,7 @@ export default function Home() {
                 Radiology expertise is geographically concentrated. A patient in a tier-3 city deserves the same quality of diagnostic insight as one in a metropolitan hospital.
               </p>
               <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.8 }}>
-                MediScan AI was built to close that gap — combining frontier language-vision models with a clinical-agent architecture that mirrors how multi-disciplinary teams actually reason.
+                Health IQ was built to close that gap — combining frontier language-vision models with a clinical-agent architecture that mirrors how multi-disciplinary teams actually reason.
               </p>
             </div>
 
@@ -754,7 +754,7 @@ export default function Home() {
                 <div style={{ width: 32, height: 32, background: 'linear-gradient(135deg, #7c3aed, #0ea5e9)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <span style={{ color: '#fff', fontWeight: 800, fontSize: 16 }}>M</span>
                 </div>
-                <span style={{ fontWeight: 800, fontSize: '1rem' }}>MediScan AI</span>
+                <span style={{ fontWeight: 800, fontSize: '1rem' }}>Health IQ</span>
               </div>
               <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.7 }}>
                 Clinical AI for medical image analysis. Built by clinicians, for clinicians.
@@ -801,7 +801,7 @@ export default function Home() {
           </div>
 
           <div style={{ borderTop: '1px solid #1e293b', paddingTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-            <p style={{ fontSize: '0.8rem', color: '#475569' }}>© 2025 MediScan AI. All rights reserved.</p>
+            <p style={{ fontSize: '0.8rem', color: '#475569' }}>© 2025 Health IQ. All rights reserved.</p>
             <p style={{ fontSize: '0.75rem', color: '#334155' }}>Not a substitute for professional medical judgement. For investigational use.</p>
           </div>
         </div>
