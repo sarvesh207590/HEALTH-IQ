@@ -52,9 +52,9 @@ export default function DashboardTab({ setActiveTab }: DashboardTabProps) {
     <div className="space-y-6">
       {/* Welcome Banner */}
       <div className="gradient-purple text-white rounded-lg p-6">
-        <h2 className="text-2xl font-bold mb-2">
+        {/* <h2 className="text-2xl font-bold mb-2">
           👋 Welcome back, {session?.user?.name}!
-        </h2>
+        </h2> */}
         <p className="text-lg opacity-90">
           <strong>{userRole.charAt(0).toUpperCase() + userRole.slice(1)}</strong>
           {specialization && ` - ${specialization}`} | 🔐 Secure AI-Powered Medical Analysis Platform
