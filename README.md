@@ -17,31 +17,47 @@
 
 ## 📸 Screenshots
 
-### Landing Page
+### 🏠 Landing Page
 ![Landing Page](medical-platform-nextjs/docs/screenshots/landing.png)
 
-### Login
+---
+
+### 🔐 Login
 ![Login](medical-platform-nextjs/docs/screenshots/login.png)
 
-### Register
+---
+
+### 📝 Register
 ![Register](medical-platform-nextjs/docs/screenshots/register.png)
 
-### Dashboard
+---
+
+### 📊 Dashboard
 ![Dashboard](medical-platform-nextjs/docs/screenshots/dashboard.png)
 
-### Report Analysis
+---
+
+### 🔬 Report Analysis
 ![Report Analysis](medical-platform-nextjs/docs/screenshots/report-analysis.png)
 
-### Multi-Doctor Collaboration
+---
+
+### 🩺 Multi-Doctor Collaboration
 ![Multi-Doctor Collaboration](medical-platform-nextjs/docs/screenshots/multidoctor-collaboration.png)
 
-### Q&A Chat
+---
+
+### 💬 Q&A Chat
 ![Q&A Chat](medical-platform-nextjs/docs/screenshots/Q&A.png)
 
-### History
+---
+
+### 📋 History
 ![History](medical-platform-nextjs/docs/screenshots/history.png)
 
-### Nearby Doctors
+---
+
+### 📍 Nearby Doctors
 ![Nearby Doctors](medical-platform-nextjs/docs/screenshots/nearby-doctors.png)
 
 ---
