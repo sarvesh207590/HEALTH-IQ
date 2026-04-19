@@ -72,7 +72,7 @@
 | 🧩 Multidisciplinary Diagnosis | A coordinating agent consolidates all AI insights into one report |
 | 📝 Plain-Language Summaries | LLMs translate complex medical data into easy-to-understand language |
 | � Speciailist Recommendations | Suggests relevant specializations (Cardiology, Nephrology, etc.) |
-| � PRAG Medical Chatbot | Ask natural-language questions about your report via RAG |
+| � RAG Medical Chatbot | Ask natural-language questions about your report via RAG |
 | 🔐 Secure Auth | NextAuth v5 with session management |
 | ⚡ Real-time Updates | Socket.io powered live interactions |
 
