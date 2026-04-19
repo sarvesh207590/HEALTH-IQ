@@ -46,11 +46,6 @@
 
 ---
 
-## 📅 Project Timeline
-
-**April 2026** — B.Tech Final Year Major Project
-
----
 
 ## 🚀 Key Features
 
@@ -173,6 +168,7 @@ Always consult a qualified healthcare professional for diagnosis and treatment d
 - Sarvesh Mokal
 
 **Mentor:** Prof. Bhagyashree Patil
+
 **Institution:** Pillai College of Engineering, New Panvel
 
 ---
