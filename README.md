@@ -108,7 +108,7 @@ RAG chatbot enables interactive Q&A on the report
 | Backend | Next.js API Routes, Socket.io |
 | Database | MongoDB 6 |
 | Auth | NextAuth v5 |
-| AI / LLM | OpenAI API, LangChain |
+| AI / LLM | OpenAI API, LangChain ,MedGemma|
 | Vector Store | Pinecone (RAG) |
 | File Uploads | UploadThing, AWS S3 |
 | Caching | Redis |
